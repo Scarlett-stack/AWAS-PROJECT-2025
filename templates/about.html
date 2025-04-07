@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+        <html>
+        <head>
+            <title>About - TechBlog</title>
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+            <style>
+                .about-header {
+                    background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)),
+                                url('https://picsum.photos/id/2/1920/400');
+                    background-size: cover;
+                    background-position: center;
+                    padding: 80px 0;
+                    margin-bottom: 60px;
+                }
+                .feature-card {
+                    border: none;
+                    border-radius: 15px;
+                    transition: transform 0.3s;
+                    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+                }
+                .feature-card:hover {
+                    transform: translateY(-10px);
+                }
+                .feature-icon {
+                    width: 60px;
+                    height: 60px;
+                    background: #0d6efd;
+                    color: white;
+                    border-radius: 30px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin: 0 auto 20px;
+                }
+                .feature-icon i {
+                    font-size: 24px;
+                }
+                .team-member {
+                    text-align: center;
+                    margin-bottom: 30px;
+                }
+                .team-avatar {
+                    width: 120px;
+                    height: 120px;
+                    border-radius: 60px;
+                    margin: 0 auto 15px;
+                    overflow: hidden;
+                }
+                .team-avatar img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                }
+                .social-links a {
+                    color: #6c757d;
+                    margin: 0 10px;
+                    transition: color 0.3s;
+                    text-decoration: none;
+                }
+                .social-links a:hover {
+                    color: #0d6efd;
+                }
+            </style>
+        </head>
+        <body>
+            <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+                <div class="container">
+                    <a class="navbar-brand" href="/">
+                        <i class="bi bi-code-square"></i> TechBlog
+                    </a>
+                    <div class="navbar-nav ms-auto">
+                        <a class="nav-link" href="/dashboard">
+                            <i class="bi bi-speedometer2"></i> Dashboard
+                        </a>
+                        <a class="nav-link" href="/profile">
+                            <i class="bi bi-person"></i> Profile
+                        </a>
+                        <a class="nav-link" href="/logout">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </a>
+                    </div>
+                </div>
+            </nav>
+            
+            <div class="about-header text-center">
+                <div class="container">
+                    <h1 class="display-4">About TechBlog</h1>
+                    <p class="lead mb-0">A community of tech enthusiasts sharing knowledge and experiences</p>
+                </div>
+            </div>
+            
+            <div class="container mb-5">
+                <div class="row mb-5">
+                    <div class="col-md-4">
+                        <div class="card feature-card text-center p-4">
+                            <div class="feature-icon">
+                                <i class="bi bi-people"></i>
+                            </div>
+                            <h4>Community Driven</h4>
+                            <p class="text-muted">Join a vibrant community of developers, sharing insights and experiences.</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card feature-card text-center p-4">
+                            <div class="feature-icon">
+                                <i class="bi bi-book"></i>
+                            </div>
+                            <h4>Rich Content</h4>
+                            <p class="text-muted">Access high-quality technical articles, tutorials, and case studies.</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card feature-card text-center p-4">
+                            <div class="feature-icon">
+                                <i class="bi bi-shield-check"></i>
+                            </div>
+                            <h4>Secure Platform</h4>
+                            <p class="text-muted">Your data and content are protected with industry-standard security.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <h2 class="text-center mb-4">Meet Our Team</h2>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="team-member">
+                            <div class="team-avatar">
+                                <img src="https://picsum.photos/id/1005/200" alt="Team Member">
+                            </div>
+                            <h5>Sarah Johnson</h5>
+                            <p class="text-muted">Lead Developer</p>
+                            <div class="social-links">
+                                <a href="#"><i class="bi bi-twitter"></i></a>
+                                <a href="#"><i class="bi bi-linkedin"></i></a>
+                                <a href="#"><i class="bi bi-github"></i></a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="team-member">
+                            <div class="team-avatar">
+                                <img src="https://picsum.photos/id/1012/200" alt="Team Member">
+                            </div>
+                            <h5>Michael Chen</h5>
+                            <p class="text-muted">Security Expert</p>
+                            <div class="social-links">
+                                <a href="#"><i class="bi bi-twitter"></i></a>
+                                <a href="#"><i class="bi bi-linkedin"></i></a>
+                                <a href="#"><i class="bi bi-github"></i></a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="team-member">
+                            <div class="team-avatar">
+                                <img src="https://picsum.photos/id/1027/200" alt="Team Member">
+                            </div>
+                            <h5>Emma Davis</h5>
+                            <p class="text-muted">Content Manager</p>
+                            <div class="social-links">
+                                <a href="#"><i class="bi bi-twitter"></i></a>
+                                <a href="#"><i class="bi bi-linkedin"></i></a>
+                                <a href="#"><i class="bi bi-github"></i></a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <footer class="bg-dark text-white py-4">
+                <div class="container">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5><i class="bi bi-code-square"></i> TechBlog</h5>
+                            <p>Share your knowledge. Learn from others.</p>
+                        </div>
+                        <div class="col-md-6 text-md-end">
+                            <div class="h4">
+                                <a href="#" class="text-white me-3"><i class="bi bi-twitter"></i></a>
+                                <a href="#" class="text-white me-3"><i class="bi bi-github"></i></a>
+                                <a href="#" class="text-white"><i class="bi bi-linkedin"></i></a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </footer>
+        </body>
+        </html>

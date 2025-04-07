@@ -1,4 +1,4 @@
-from flask import Flask, render_template_string, request, session, redirect, url_for, jsonify, render_template
+from flask import Flask, render_template, request, session, redirect, url_for, jsonify, send_from_directory
 import sqlite3
 import hashlib
 import json
@@ -6,7 +6,7 @@ import jwt
 import os
 import base64
 
-app = Flask(__name__, static_url_path='/static')
+app = Flask(__name__, template_folder='templates', static_url_path='/static')
 
 # Serve static files
 @app.route('/static/<path:path>')
@@ -25,7 +25,6 @@ def get_random_tech_image():
     import random
     return random.choice(tech_images)
 
-app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'  # Change this in production
 JWT_SECRET = 'your-256-bit-secret'  # Change this in production
 
@@ -78,6 +77,7 @@ def init_db():
 def index():
     conn = get_db()
     c = conn.cursor()
+    
     # Get latest public posts with user roles
     c.execute("""
         SELECT posts.*, users.role 
@@ -109,7 +109,7 @@ def index():
     
     conn.close()
     
-    return render_template_string('/index.html', posts=posts, featured_post=featured_post, categories=categories, get_random_tech_image=get_random_tech_image)
+    return render_template('index.html', posts=posts, featured_post=featured_post, categories=categories, get_random_tech_image=get_random_tech_image)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -134,7 +134,7 @@ def register():
             return redirect(url_for('login'))
         conn.close()
     
-    return render_template('/register.html', error=error)
+    return render_template('register.html', error=error)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -169,7 +169,7 @@ def login():
         finally:
             conn.close()
     
-    return render_template_string('/login.html', error=error)
+    return render_template('login.html', error=error)
 
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
@@ -214,7 +214,7 @@ def dashboard():
     
     conn.close()
     
-    return render_template('/dashboard.html', error=error, success=success, posts=posts)
+    return render_template('dashboard.html', error=error, success=success, posts=posts)
 
 @app.route('/profile')
 def profile():
@@ -244,7 +244,7 @@ def profile():
     
     conn.close()
     
-    return render_template('/profile.html', user=user, total_posts=total_posts, latest_posts=latest_posts)
+    return render_template('profile.html', user=user, total_posts=total_posts, latest_posts=latest_posts)
 
 @app.route('/admin')
 def admin():
@@ -269,7 +269,7 @@ def admin():
     
     conn.close()
     
-    return render_template('/admin.html', users=users, posts=posts)
+    return render_template(template_name_or_list='admin.html', users=users, posts=posts)
 
 @app.route('/api/secret')
 def api_secret():
@@ -323,8 +323,8 @@ def logout():
 
 @app.route('/about')
 def about():
-    return render_template('/about.html')
+    return render_template('about.html')
 
 if __name__ == "__main__":
     init_db()
-    app.run(debug=True, port=5001)
+    app.run(debug=True, host='127.0.0.1', port=5000)
