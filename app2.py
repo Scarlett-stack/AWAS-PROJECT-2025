@@ -3,6 +3,7 @@ import sqlite3, os
 
 app = Flask(__name__)
 
+sneaky_flag = "CTF{gu3ss_ur_n0t_a_r00k1e_aft3r_a11}"
 def init_db():
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
@@ -75,7 +76,7 @@ def login():
 def admin():
     uid = request.cookies.get('user_id')
     if uid == '1015':
-        return "Welcome admin! FLAG{you_got_admin_access}"
+        return "Welcome admin! CTF{you_got_admin_access}"
     return "Access denied."
 
 @app.route('/show_users')
@@ -96,6 +97,17 @@ def show_users():
     output += "</ul>"
 
     return output
+@app.route('/read_file')
+def read_file():
+    filename = request.args.get('name')
+
+    try:
+        safe_path = os.path.join("files", filename)
+        with open(safe_path, "r") as f:
+            content = f.read()
+        return f"<h3>Contents of {filename}:</h3><pre>{content}</pre>"
+    except Exception as e:
+        return f"<b>Error:</b> {e}"
 
 
 if __name__ == "__main__":
