@@ -1,0 +1,5 @@
+{
+    "sql_injection": "FLAG{SQL_1nj3ct10n_Byp4ss_2025}",
+    "xss_stored": "FLAG{XSS_St0r3d_Att4ck_2025}",
+    "jwt_none": "FLAG{JWT_N0n3_Alg0_2025}"
+}
