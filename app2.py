@@ -54,16 +54,22 @@ def login():
 
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
-    c.execute("SELECT id FROM users WHERE username=? AND password=?", (user, passwd))
+
+    # Vulnerable SQL query — intentionally injectable
+    query = f"SELECT id, username FROM users WHERE username='{user}' AND password='{passwd}'"
+    c.execute(query)
     result = c.fetchone()
     conn.close()
 
     if result:
-        uid = 1015 if user == 'admin' else 1000 + result[0]
-        resp = make_response(f"Logged in as {user}")
+        db_id, db_user = result
+        uid = 1015 if db_user == 'admin' else 1000 + db_id
+        resp = make_response(f"Logged in as {db_user}")
         resp.set_cookie('user_id', str(uid))
         return resp
+
     return "Invalid credentials"
+
 
 @app.route('/admin')
 def admin():
@@ -74,18 +80,23 @@ def admin():
 
 @app.route('/show_users')
 def show_users():
+    uid = request.cookies.get('user_id')
+    if uid != '1015':
+        return "Access denied."
+
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
-    c.execute("SELECT id, username FROM users")
+    c.execute("SELECT id, username, password FROM users")
     users = c.fetchall()
     conn.close()
 
-    output = "<h2>Registered Users:</h2><ul>"
-    for uid, uname in users:
-        output += f"<li>ID: {uid} - Username: {uname}</li>"
+    output = "<h2>All Registered Users (Admin View):</h2><ul>"
+    for uid, uname, pwd in users:
+        output += f"<li>ID: {uid} - Username: {uname} - Password: {pwd}</li>"
     output += "</ul>"
 
     return output
+
 
 if __name__ == "__main__":
     init_db()
