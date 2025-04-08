@@ -3,8 +3,8 @@ import sqlite3
 import hashlib
 import json
 import jwt
-import os
-import base64
+from datetime import datetime, timedelta
+
 
 app = Flask(__name__, template_folder='templates', static_url_path='/static')
 
@@ -38,40 +38,36 @@ def get_db():
     return db
 
 def init_db():
-    conn = get_db()
-    c = conn.cursor()
-    
-    # Create users table with MD5 hashed passwords (intentionally weak)
-    c.execute('''
+    db = get_db()
+    db.execute('''
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
-            password TEXT,  -- MD5 hashed (vulnerable)
-            role TEXT DEFAULT 'user'
+            password TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user'
         )
     ''')
     
-    # Create posts table
-    c.execute('''
+    db.execute('''
         CREATE TABLE IF NOT EXISTS posts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT,
-            content TEXT,  -- Vulnerable to XSS
-            author TEXT,
-            is_private INTEGER DEFAULT 0,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            author TEXT NOT NULL,
+            is_private BOOLEAN NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (author) REFERENCES users (username)
         )
     ''')
+
+    # Check if admin user exists
+    admin = query_db('SELECT * FROM users WHERE username = ?', ['admin'], one=True)
+    if not admin:
+        # Create admin user with MD5 hashed password (intentionally vulnerable)
+        admin_pass = hashlib.md5('admin123'.encode()).hexdigest()
+        db.execute('INSERT INTO users (username, password, role) VALUES (?, ?, ?)',
+                  ['admin', admin_pass, 'admin'])
     
-    # Add admin user if not exists
-    c.execute("SELECT * FROM users WHERE username = 'admin'")
-    if not c.fetchone():
-        c.execute(
-            "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-            ('admin', hashlib.md5('admin123'.encode()).hexdigest(), 'admin')
-        )
-    
-    conn.commit()
-    conn.close()
+    db.commit()
 
 @app.route('/')
 def index():
@@ -212,39 +208,168 @@ def dashboard():
     ''', (session['username'],))
     posts = c.fetchall()
     
+    # Get user information
+    c.execute('SELECT * FROM users WHERE username = ?', (session['username'],))
+    user = c.fetchone()
+    
     conn.close()
     
-    return render_template('dashboard.html', error=error, success=success, posts=posts)
+    return render_template('dashboard.html', error=error, success=success, posts=posts, user=user)
+
+@app.route('/create_post', methods=['POST'])
+def create_post():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+    
+    title = request.form.get('title')
+    content = request.form.get('content')
+    
+    if not title or not content:
+        return redirect(url_for('dashboard', error='Title and content are required'))
+    
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        # Intentionally vulnerable to SQL injection
+        query = f"INSERT INTO posts (title, content, author) VALUES ('{title}', '{content}', '{session['username']}')"
+        print("Executing query:", query)  # Log the query for debugging
+        cursor.execute(query)
+        db.commit()
+        return redirect(url_for('dashboard', success='Post created successfully'))
+    except Exception as e:
+        print("Error creating post:", str(e))
+        return redirect(url_for('dashboard', error='Error creating post'))
 
 @app.route('/profile')
 def profile():
     if 'username' not in session:
         return redirect(url_for('login'))
-    
-    username = session['username']
-    conn = get_db()
-    c = conn.cursor()
-    
-    # Get user info
-    c.execute("SELECT username, role FROM users WHERE username = ?", (username,))
-    user = c.fetchone()
-    
-    if not user:
-        # Handle case where user is in session but not in database
-        session.clear()
+
+    # Intentionally vulnerable to SQL injection
+    query = f"SELECT * FROM users WHERE username = '{session['username']}'"
+    user = query_db(query, one=True)
+
+    # Get user's posts ordered by id instead of created_at for now
+    if session.get('role') == 'admin':
+        posts = query_db('SELECT * FROM posts ORDER BY id DESC')
+    else:
+        posts = query_db('SELECT * FROM posts WHERE author = ? ORDER BY id DESC',
+                        [session['username']])
+
+    total_posts = len(posts) if posts else 0
+
+    return render_template('profile.html', 
+                         user=[user['username'], user['role']],
+                         posts=posts,
+                         total_posts=total_posts,
+                         error=request.args.get('error'),
+                         success=request.args.get('success'))
+
+@app.route('/update-profile', methods=['POST'])
+def update_profile():
+    if 'username' not in session:
         return redirect(url_for('login'))
+
+    current_password = request.form.get('current_password')
+    new_password = request.form.get('new_password')
+    confirm_password = request.form.get('confirm_password')
+
+    if not current_password or not new_password or not confirm_password:
+        return redirect(url_for('profile', error='All fields are required'))
+
+    if new_password != confirm_password:
+        return redirect(url_for('profile', error='New passwords do not match'))
+
+    # Intentionally vulnerable: using MD5 for password hashing
+    current_password_hash = hashlib.md5(current_password.encode()).hexdigest()
     
-    # Get user's total posts
-    c.execute("SELECT COUNT(*) FROM posts WHERE author = ?", (username,))
-    total_posts = c.fetchone()[0]
-    
-    # Get user's latest posts
-    c.execute("SELECT * FROM posts WHERE author = ? ORDER BY id DESC LIMIT 3", (username,))
-    latest_posts = c.fetchall()
-    
-    conn.close()
-    
-    return render_template('profile.html', user=user, total_posts=total_posts, latest_posts=latest_posts)
+    # SQL Injection vulnerability in the query
+    query = f"SELECT * FROM users WHERE username = '{session['username']}' AND password = '{current_password_hash}'"
+    user = query_db(query, one=True)
+
+    if not user:
+        return redirect(url_for('profile', error='Current password is incorrect'))
+
+    # Update password with MD5 hash (intentionally vulnerable)
+    new_password_hash = hashlib.md5(new_password.encode()).hexdigest()
+    db = get_db()
+    db.execute("UPDATE users SET password = ? WHERE username = ?", 
+               [new_password_hash, session['username']])
+    db.commit()
+
+    return redirect(url_for('profile', success='Password updated successfully'))
+
+@app.route('/api/posts/<int:post_id>', methods=['PUT'])
+def update_post(post_id):
+    if 'username' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json()
+    title = data.get('title')
+    content = data.get('content')
+    is_private = data.get('is_private', False)
+
+    if not title or not content:
+        return jsonify({'error': 'Title and content are required'}), 400
+
+    db = get_db()
+    post = query_db('SELECT * FROM posts WHERE id = ?', [post_id], one=True)
+
+    if not post:
+        return jsonify({'error': 'Post not found'}), 404
+
+    # Check if user is admin or post owner
+    if session.get('role') != 'admin' and post['author'] != session['username']:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    # Update the post
+    db.execute(
+        'UPDATE posts SET title = ?, content = ?, is_private = ? WHERE id = ?',
+        [title, content, is_private, post_id]
+    )
+    db.commit()
+
+    return jsonify({'success': True, 'message': 'Post updated successfully'})
+
+@app.route('/api/posts/<int:post_id>', methods=['DELETE'])
+def delete_post(post_id):
+    if 'username' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    db = get_db()
+    post = query_db('SELECT * FROM posts WHERE id = ?', [post_id], one=True)
+
+    if not post:
+        return jsonify({'error': 'Post not found'}), 404
+
+    # Check if user is admin or post owner
+    if session.get('role') != 'admin' and post['author'] != session['username']:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    # Delete the post
+    db.execute('DELETE FROM posts WHERE id = ?', [post_id])
+    db.commit()
+
+    return jsonify({'success': True, 'message': 'Post deleted successfully'})
+
+@app.route('/api/posts', methods=['GET'])
+def get_posts():
+    if 'username' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    # If admin, show all posts
+    if session.get('role') == 'admin':
+        posts = query_db('SELECT * FROM posts ORDER BY id DESC')
+    else:
+        # Show public posts and user's own private posts
+        posts = query_db('''
+            SELECT * FROM posts 
+            WHERE is_private = 0 
+            OR (is_private = 1 AND author = ?) 
+            ORDER BY id DESC
+        ''', [session['username']])
+
+    return jsonify({'posts': posts})
 
 @app.route('/admin')
 def admin():
@@ -324,6 +449,63 @@ def logout():
 @app.route('/about')
 def about():
     return render_template('about.html')
+
+def query_db(query, args=(), one=False):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(query, args)
+    rv = cur.fetchall()
+    cur.close()
+    conn.close()
+    return (rv[0] if rv else None) if one else rv
+
+JWT_SECRET = 'your-secret-key'  # Intentionally simple secret
+
+def generate_token(username, role):
+    payload = {
+        'username': username,
+        'role': role,
+        'exp': datetime.utcnow() + timedelta(days=1)
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm='HS256')
+
+def verify_token(token):
+    try:
+        # Intentionally vulnerable: accepts 'none' algorithm
+        payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256', 'none'])
+        return payload
+    except jwt.InvalidTokenError:
+        return None
+
+@app.route('/api/token', methods=['POST'])
+def get_token():
+    if 'username' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    token = generate_token(session['username'], session.get('role', 'user'))
+    return jsonify({'token': token})
+
+@app.route('/api/admin/verify', methods=['GET'])
+def verify_admin():
+    token = request.headers.get('Authorization')
+    if not token or not token.startswith('Bearer '):
+        return jsonify({'error': 'No token provided'}), 401
+
+    token = token.split(' ')[1]
+    payload = verify_token(token)
+    
+    if not payload:
+        return jsonify({'error': 'Invalid token'}), 401
+
+    # Check if user is admin (vulnerable to JWT none algorithm)
+    if payload.get('role') == 'admin':
+        return jsonify({
+            'success': True,
+            'message': 'Admin access granted',
+            'flag': 'FLAG{JWT_N0n3_Alg_Byp4ss_2025}'
+        })
+    
+    return jsonify({'error': 'Admin access required'}), 403
 
 if __name__ == "__main__":
     init_db()

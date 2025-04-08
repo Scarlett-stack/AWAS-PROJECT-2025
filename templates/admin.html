@@ -1,199 +1,151 @@
  <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Admin Panel - TechBlog</title>
-            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-            <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
-            <style>
-                .admin-header {
-                    background: linear-gradient(rgba(0,0,0,0.8), rgba(0,0,0,0.8)),
-                                url('https://picsum.photos/id/201/1920/1080');
-                    background-size: cover;
-                    background-position: center;
-                    padding: 100px 0;
-                    color: white;
-                }
-                .stats-card {
-                    border: none;
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                    transition: transform 0.2s;
-                }
-                .stats-card:hover {
-                    transform: translateY(-5px);
-                }
-                .user-table, .post-table {
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                }
-            </style>
-        </head>
-        <body>
-            <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-                <div class="container">
-                    <a class="navbar-brand" href="/">
-                        <i class="bi bi-code-square"></i> TechBlog
-                    </a>
-                    <div class="navbar-nav ms-auto">
-                        <a class="nav-link active" href="/admin">
-                            <i class="bi bi-shield-lock"></i> Admin
-                        </a>
-                        <a class="nav-link" href="/dashboard">
-                            <i class="bi bi-house"></i> Dashboard
-                        </a>
-                        <a class="nav-link" href="/profile">
-                            <i class="bi bi-person"></i> Profile
-                        </a>
-                        <a class="nav-link" href="/logout">
-                            <i class="bi bi-box-arrow-right"></i> Logout
-                        </a>
-                    </div>
-                </div>
-            </nav>
+<html>
+<head>
+    <title>Admin Panel - TechBlog</title>
+     <link rel="stylesheet" href="./static/css/styles.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-code-square"></i> TechBlog
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link active" href="/admin">
+                    <i class="bi bi-shield-lock"></i> Admin
+                </a>
+                <a class="nav-link" href="/dashboard">
+                    <i class="bi bi-house"></i> Dashboard
+                </a>
+                <a class="nav-link" href="/profile">
+                    <i class="bi bi-person"></i> Profile
+                </a>
+                <a class="nav-link" href="/logout">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
+            </div>
+        </div>
+    </nav>
 
-            <header class="admin-header text-center">
-                <h1><i class="bi bi-shield-lock"></i> Admin Panel</h1>
-                <p class="lead">Manage users and content</p>
-            </header>
+    <header class="admin-header text-center">
+        <h1><i class="bi bi-shield-lock"></i> Admin Panel</h1>
+        <p class="lead">Manage users and content</p>
+    </header>
 
-            <div class="container py-5">
-                <div class="row mb-5">
-                    <div class="col-md-4">
-                        <div class="card stats-card text-center mb-4">
-                            <div class="card-body">
-                                <h1 class="display-4">{{ users|length }}</h1>
-                                <p class="text-muted mb-0">Total Users</p>
+    <div class="container py-5">
+        <div class="section">
+            <div class="row">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                            <h4 class="mb-0"><i class="bi bi-shield-lock"></i> Admin Panel</h4>
+                            <div>
+                                <button class="btn btn-outline-light" onclick="refreshUsers()">
+                                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                                </button>
                             </div>
                         </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="card stats-card text-center mb-4">
-                            <div class="card-body">
-                                <h1 class="display-4">{{ posts|length }}</h1>
-                                <p class="text-muted mb-0">Total Posts</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="card stats-card text-center mb-4">
-                            <div class="card-body">
-                                <h1 class="display-4">{{ users|selectattr('role', 'equalto', 'admin')|list|length }}</h1>
-                                <p class="text-muted mb-0">Admin Users</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="card user-table mb-4">
-                            <div class="card-header bg-dark text-white">
-                                <h5 class="card-title mb-0">
-                                    <i class="bi bi-people"></i> Users
-                                </h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="table-responsive">
-                                    <table class="table table-hover">
-                                        <thead>
-                                            <tr>
-                                                <th>Username</th>
-                                                <th>Role</th>
-                                                <th>Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {% for user in users %}
-                                                <tr>
-                                                    <td>{{ user.username }}</td>
-                                                    <td>
-                                                        <span class="badge bg-{{ 'danger' if user.role == 'admin' else 'secondary' }}">
-                                                            {{ user.role }}
-                                                        </span>
-                                                    </td>
-                                                    <td>
-                                                        <button class="btn btn-sm btn-outline-primary">
-                                                            <i class="bi bi-pencil"></i>
-                                                        </button>
-                                                        <button class="btn btn-sm btn-outline-danger">
-                                                            <i class="bi bi-trash"></i>
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            {% endfor %}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-md-6">
-                        <div class="card post-table">
-                            <div class="card-header bg-dark text-white">
-                                <h5 class="card-title mb-0">
-                                    <i class="bi bi-file-text"></i> Recent Posts
-                                </h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="table-responsive">
-                                    <table class="table table-hover">
-                                        <thead>
-                                            <tr>
-                                                <th>Title</th>
-                                                <th>Author</th>
-                                                <th>Status</th>
-                                                <th>Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {% for post in posts %}
-                                                <tr>
-                                                    <td>{{ post.title }}</td>
-                                                    <td>
-                                                        {{ post.author }}
-                                                        {% if post.role == 'admin' %}
-                                                            <span class="badge bg-danger">Admin</span>
-                                                        {% endif %}
-                                                    </td>
-                                                    <td>
-                                                        <span class="badge bg-{{ 'warning' if post.is_private else 'success' }}">
-                                                            {{ 'Private' if post.is_private else 'Public' }}
-                                                        </span>
-                                                    </td>
-                                                    <td>
-                                                        <button class="btn btn-sm btn-outline-primary">
-                                                            <i class="bi bi-eye"></i>
-                                                        </button>
-                                                        <button class="btn btn-sm btn-outline-danger">
-                                                            <i class="bi bi-trash"></i>
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            {% endfor %}
-                                        </tbody>
-                                    </table>
-                                </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Username</th>
+                                            <th>Password Hash</th>
+                                            <th>Role</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="userTableBody">
+                                        {% for user in users %}
+                                        <tr>
+                                            <td>{{ user.id }}</td>
+                                            <td>{{ user.username }}</td>
+                                            <td><code>{{ user.password }}</code></td>
+                                            <td>
+                                                <span class="badge {% if user.is_admin %}bg-danger{% else %}bg-info{% endif %}">
+                                                    {% if user.is_admin %}Admin{% else %}User{% endif %}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <button class="btn btn-sm btn-danger" onclick="deleteUser('{{ user.id }}')">
+                                                    <i class="bi bi-trash"></i> Delete
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
 
-            <footer class="bg-dark text-white py-4 mt-5">
-                <div class="container">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <h5><i class="bi bi-code-square"></i> TechBlog</h5>
-                            <p>Share your knowledge. Learn from others.</p>
-                        </div>
-                        <div class="col-md-6 text-md-end">
-                            <div class="h4">
-                                <a href="#" class="text-white me-3"><i class="bi bi-twitter"></i></a>
-                                <a href="#" class="text-white me-3"><i class="bi bi-github"></i></a>
-                                <a href="#" class="text-white"><i class="bi bi-linkedin"></i></a>
-                            </div>
-                        </div>
+    <script>
+    function deleteUser(userId) {
+        if (confirm('Are you sure you want to delete this user?')) {
+            fetch(`/api/users/${userId}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    refreshUsers();
+                } else {
+                    alert('Failed to delete user');
+                }
+            });
+        }
+    }
+
+    function refreshUsers() {
+        fetch('/api/users')
+            .then(response => response.json())
+            .then(data => {
+                const tbody = document.getElementById('userTableBody');
+                tbody.innerHTML = data.users.map(user => {
+                    return `
+                        <tr>
+                            <td>${user.id}</td>
+                            <td>${user.username}</td>
+                            <td><code>${user.password}</code></td>
+                            <td>
+                                <span class="badge ${user.is_admin ? 'bg-danger' : 'bg-info'}">
+                                    ${user.is_admin ? 'Admin' : 'User'}
+                                </span>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-danger" onclick="deleteUser('${user.id}')">
+                                    <i class="bi bi-trash"></i> Delete
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            });
+    }
+    </script>
+
+    <footer class="bg-dark text-white py-4 mt-5">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5><i class="bi bi-code-square"></i> TechBlog</h5>
+                    <p>Share your knowledge. Learn from others.</p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <div class="h4">
+                        <a href="#" class="text-white me-3"><i class="bi bi-twitter"></i></a>
+                        <a href="#" class="text-white me-3"><i class="bi bi-github"></i></a>
+                        <a href="#" class="text-white"><i class="bi bi-linkedin"></i></a>
                     </div>
                 </div>
-            </footer>
-        </body>
-        </html>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
