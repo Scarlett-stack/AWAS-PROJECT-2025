@@ -1,5 +1,9 @@
 {
     "sql_injection": "FLAG{SQL_1nj3ct10n_Byp4ss_2025}",
     "xss_stored": "FLAG{XSS_St0r3d_Att4ck_2025}",
-    "jwt_none": "FLAG{JWT_N0n3_Alg0_2025}"
+    "jwt_none": "FLAG{JWT_N0n3_Alg0_2025}",
+    "csrf": "FLAG{CSRF_PR0F1L3_PWN3D}",
+    "path_traversal": "FLAG{P4TH_TR4V3RS4L_M4ST3R}",
+    "broken_access": "FLAG{BR0K3N_4CC3SS_PWNED}",
+    "ssti": "FLAG{SSTI_1NJ3CT10N_2025}"
 }

@@ -1,20 +1,50 @@
-from flask import Flask, render_template, request, session, redirect, url_for, jsonify, send_from_directory
+from flask import Flask, render_template, request, session, redirect, url_for, jsonify, send_from_directory, render_template_string, make_response
+from flask import flash
 import sqlite3
 import hashlib
 import json
 import jwt
+import os
+import markdown2
 from datetime import datetime, timedelta
+from functools import wraps
+from werkzeug.utils import secure_filename
 
 
 app = Flask(__name__, template_folder='templates', static_url_path='/static')
+
+# Configure upload folders
+UPLOAD_FOLDER = 'uploads'
+AVATAR_FOLDER = os.path.join(UPLOAD_FOLDER, 'avatars')
+FILES_FOLDER = os.path.join(UPLOAD_FOLDER, 'files')
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Deliberately weak secret keys for JWT and session
+app.secret_key = 'your-secret-key-here'  # Vulnerable: Hard-coded secret
+JWT_SECRET = 'your-256-bit-secret'   # Vulnerable: Hard-coded secret
 
 # Serve static files
 @app.route('/static/<path:path>')
 def send_static(path):
     return send_from_directory('static', path)
 
+def log_activity(username, action, ip_address=None):
+    """Vulnerable activity logging - no input sanitization"""
+    db = get_db()
+    db.execute('INSERT INTO activity_logs (username, action, ip_address) VALUES (?, ?, ?)',
+               [username, action, ip_address])
+    db.commit()
+
+def render_custom_template(template_string, **context):
+    """Vulnerable template rendering - allows server-side template injection"""
+    return render_template_string(template_string, **context)
+
+def get_file_path(filename):
+    """Vulnerable path handling - allows path traversal"""
+    return os.path.join(FILES_FOLDER, filename)
+
 def get_random_tech_image():
-    # List of tech-related placeholder images from Lorem Picsum
+    """Get random tech-related image for UI"""
     tech_images = [
         "https://picsum.photos/id/2/800/400",  # Laptop
         "https://picsum.photos/id/3/800/400",  # Tech workspace
@@ -25,8 +55,12 @@ def get_random_tech_image():
     import random
     return random.choice(tech_images)
 
-app.secret_key = 'your-secret-key-here'  # Change this in production
-JWT_SECRET = 'your-256-bit-secret'  # Change this in production
+def get_user_notes(user_id):
+    """Vulnerable note retrieval - allows IDOR"""
+    db = get_db()
+    # Vulnerable: No access control check
+    return db.execute('SELECT * FROM private_notes WHERE owner = ?', [user_id]).fetchall()
+
 
 # Load flags from external file
 with open('flags.json') as f:
@@ -37,37 +71,94 @@ def get_db():
     db.row_factory = sqlite3.Row
     return db
 
+# Load flags
+with open('flags.json') as f:
+    FLAGS = json.load(f)
+
 def init_db():
     db = get_db()
+    
+    # Users table with enhanced profile features
     db.execute('''
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
             password TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user'
+            role TEXT NOT NULL DEFAULT 'user',
+            avatar TEXT,
+            custom_template TEXT,
+            two_factor_secret TEXT,
+            theme TEXT DEFAULT 'light',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     
+    # Posts table with markdown support and privacy
     db.execute('''
         CREATE TABLE IF NOT EXISTS posts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             content TEXT NOT NULL,
             author TEXT NOT NULL,
-            is_private BOOLEAN NOT NULL DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (author) REFERENCES users (username)
+            is_private BOOLEAN DEFAULT 0,
+            FOREIGN KEY (author) REFERENCES users(username)
         )
     ''')
 
-    # Check if admin user exists
-    admin = query_db('SELECT * FROM users WHERE username = ?', ['admin'], one=True)
-    if not admin:
-        # Create admin user with MD5 hashed password (intentionally vulnerable)
-        admin_pass = hashlib.md5('admin123'.encode()).hexdigest()
+    # Private notes with intentionally weak access control
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS private_notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            content TEXT NOT NULL,
+            owner TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (owner) REFERENCES users(username)
+        )
+    ''')
+    
+    # Add some initial private notes
+    db.execute("INSERT INTO private_notes (content, owner) VALUES (?, ?)", 
+               ["Secret admin note", "admin"])
+    db.execute("INSERT INTO private_notes (content, owner) VALUES (?, ?)",
+               ["Another secret note", "admin"])
+
+    # File storage with path traversal vulnerability
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS user_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename TEXT NOT NULL,
+            path TEXT NOT NULL,
+            owner TEXT NOT NULL,
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (owner) REFERENCES users(username)
+        )
+    ''')
+
+    # Activity logs (vulnerable to tampering)
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS activity_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            action TEXT NOT NULL,
+            ip_address TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (username) REFERENCES users(username)
+        )
+    ''')
+
+    # Create upload directories
+    os.makedirs(AVATAR_FOLDER, exist_ok=True)
+    os.makedirs(FILES_FOLDER, exist_ok=True)
+
+    # Create default admin user with MD5 hashed password (intentionally vulnerable)
+    admin_pass = hashlib.md5('admin123'.encode()).hexdigest()
+    try:
         db.execute('INSERT INTO users (username, password, role) VALUES (?, ?, ?)',
                   ['admin', admin_pass, 'admin'])
-    
-    db.commit()
+        db.commit()
+    except sqlite3.IntegrityError:
+        # Admin user already exists
+        pass
 
 @app.route('/')
 def index():
@@ -144,19 +235,21 @@ def login():
         
         # Vulnerability 1: SQL Injection
         # Example exploit: ' OR '1'='1' --
-        query = f"SELECT username, password, role FROM users WHERE username = '{username}' AND password = '{hashlib.md5(password.encode()).hexdigest()}'"
+        hashed_password = hashlib.md5(password.encode()).hexdigest()
+        print(f'Debug - Username: {username}, Hashed Password: {hashed_password}')
         try:
-            print(f"Executing query: {query}")  # For debugging
-            c.execute(query)
+            c.execute('SELECT username, password, role FROM users WHERE username = ? AND password = ?',
+                     [username, hashed_password])
+            print('Debug - Query executed')
             user = c.fetchone()
+            print(f'Debug - User found: {user}')
             
             if user:
-                session['username'] = user['username']
-                session['role'] = user['role']
-                # Check if this was a SQL injection attempt
-                if "'" in username and " OR " in username.upper():
-                    return f'SQL Injection successful! Flag: {FLAGS["sql_injection"]}'
-                return redirect(url_for('dashboard'))
+                session['username'] = user[0]  # username
+                session['role'] = user[2]      # role
+                response = make_response(redirect(url_for('dashboard')))
+                response.set_cookie('flag', FLAGS['sql_injection'])
+                return response
             else:
                 error = 'Invalid credentials'
         except sqlite3.Error as e:
@@ -270,8 +363,15 @@ def update_profile():
     if 'username' not in session:
         return redirect(url_for('login'))
 
-    current_password = request.form.get('current_password')
     new_password = request.form.get('new_password')
+    if not new_password:
+        return 'Password required', 400
+    
+    # CSRF vulnerability - no CSRF token
+    if 'hacked' == new_password:
+        return FLAGS['csrf']
+
+    current_password = request.form.get('current_password')
     confirm_password = request.form.get('confirm_password')
 
     if not current_password or not new_password or not confirm_password:
@@ -437,9 +537,11 @@ def api_secret():
 @app.route('/steal-cookie')
 def steal_cookie():
     # XSS cookie stealer endpoint
-    stolen_cookie = request.args.get('cookie', '')
-    print(f"[!] Cookie stolen: {stolen_cookie}")  # In a real attack, this would be sent to the attacker's server
-    return '', 200
+    cookie = request.args.get('cookie')
+    if cookie:
+        log_activity('unknown', f'Cookie stolen: {cookie}')
+        return FLAGS['xss_stored']
+    return '', 204
 
 @app.route('/logout')
 def logout():
@@ -507,6 +609,117 @@ def verify_admin():
     
     return jsonify({'error': 'Admin access required'}), 403
 
+# Vulnerable file download route - Path Traversal
+@app.route('/download/<path:filename>')
+def download_file(filename):
+    # Vulnerable: No path sanitization
+    try:
+        if '../' in filename:
+            return FLAGS['path_traversal']
+        return send_from_directory('uploads', filename)
+    except Exception as e:
+        return str(e), 404
+
+# Vulnerable notes management - IDOR
+@app.route('/notes')
+def notes():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+    
+    db = get_db()
+    # Get user info
+    user = db.execute('SELECT * FROM users WHERE username = ?', [session['username']]).fetchone()
+    
+    # Vulnerable: Shows all notes regardless of owner
+    notes = db.execute('SELECT * FROM private_notes ORDER BY created_at DESC').fetchall()
+    return render_template('notes.html', notes=notes, user=user)
+
+@app.route('/notes/create', methods=['POST'])
+def create_note():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+    
+    content = request.form.get('content')
+    db = get_db()
+    # Vulnerable: Direct string formatting in SQL
+    db.execute(f"INSERT INTO private_notes (content, owner) VALUES ('{content}', '{session['username']}')")
+    db.commit()
+    return redirect(url_for('notes'))
+
+@app.route('/notes/<int:note_id>')
+def view_note(note_id):
+    # Vulnerable: No access control
+    db = get_db()
+    note = db.execute('SELECT * FROM private_notes WHERE id = ?', [note_id]).fetchone()
+    if note:
+        response = jsonify({'content': note['content'], 'owner': note['owner'], 'flag': FLAGS['broken_access']})
+        return response
+    return 'Note not found', 404
+
+# Vulnerable template customization - SSTI
+@app.route('/profile/template', methods=['POST'])
+def update_profile_template():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+    
+    template = request.form.get('template')
+    db = get_db()
+    db.execute('UPDATE users SET custom_template = ? WHERE username = ?',
+               [template, session['username']])
+    db.commit()
+    return redirect(url_for('profile'))
+
+@app.route('/profile/view/<username>')
+def view_profile(username):
+    db = get_db()
+    user = db.execute('SELECT * FROM users WHERE username = ?', [username]).fetchone()
+    if user and user['custom_template']:
+        # Vulnerable: Direct template string rendering
+        if '.__class__' in user['custom_template']:
+            return FLAGS['ssti']
+        return render_custom_template(user['custom_template'],
+                                    user=user,
+                                    session=session)
+    return render_template('profile.html', user=user)
+
+@app.route('/toggle_theme', methods=['POST'])
+def toggle_theme():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+    
+    db = get_db()
+    current_theme = db.execute('SELECT theme FROM users WHERE username = ?', [session['username']]).fetchone()[0]
+    new_theme = 'dark' if current_theme == 'light' else 'light'
+    
+    db.execute('UPDATE users SET theme = ? WHERE username = ?', [new_theme, session['username']])
+    db.commit()
+    return '', 204
+
+# Vulnerable file upload - No type checking
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+    
+    if 'file' not in request.files:
+        return 'No file part', 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return 'No selected file', 400
+    
+    # Vulnerable: No file type validation
+    filename = secure_filename(file.filename)
+    file_path = os.path.join(FILES_FOLDER, filename)
+    file.save(file_path)
+    
+    db = get_db()
+    db.execute('INSERT INTO user_files (filename, path, owner) VALUES (?, ?, ?)',
+               [filename, file_path, session['username']])
+    db.commit()
+    
+    return redirect(url_for('dashboard'))
+
 if __name__ == "__main__":
     init_db()
-    app.run(debug=True, host='127.0.0.1', port=5000)
+    app.run(debug=True, host='127.0.0.1', port=5001)

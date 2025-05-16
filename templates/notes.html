@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Notes{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <h2>Your Notes</h2>
+        <div class="mb-4">
+            <!-- Vulnerable: No CSRF protection -->
+            <form action="{{ url_for('create_note') }}" method="POST">
+                <div class="mb-3">
+                    <label for="content" class="form-label">New Note</label>
+                    <!-- Vulnerable: No input sanitization -->
+                    <textarea class="form-control" id="content" name="content" rows="3"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Save Note</button>
+            </form>
+        </div>
+
+        <div id="notes-list">
+            {% for note in notes %}
+            <div class="card mb-3">
+                <div class="card-body">
+                    <!-- Vulnerable: Renders raw HTML -->
+                    <p class="card-text">{{ note.content | safe }}</p>
+                    <p class="card-text"><small class="text-muted">By: {{ note.owner }}</small></p>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Upload File</h5>
+                <!-- Vulnerable: No CSRF protection -->
+                <form action="{{ url_for('upload_file') }}" method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="file" class="form-label">Choose file</label>
+                        <input type="file" class="form-control" id="file" name="file">
+                    </div>
+                    <button type="submit" class="btn btn-secondary">Upload</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-body">
+                <h5 class="card-title">Custom Template</h5>
+                <!-- Vulnerable: No CSRF protection -->
+                <form action="{{ url_for('update_profile_template') }}" method="POST">
+                    <div class="mb-3">
+                        <label for="template" class="form-label">Template HTML</label>
+                        <!-- Vulnerable: No input sanitization -->
+                        <textarea class="form-control" id="template" name="template" rows="3">{{ user.custom_template }}</textarea>
+                    </div>
+                    <button type="submit" class="btn btn-secondary">Update Template</button>
+                </form>
+                <!-- Vulnerable: Server-Side Template Injection -->
+                <form action="{{ url_for('update_profile_template') }}" method="POST">
+                    <div class="mb-3">
+                        <label for="template" class="form-label">Profile Template</label>
+                        <textarea class="form-control" id="template" name="template" rows="3">Hello {{ user.username }}!</textarea>
+                    </div>
+                    <button type="submit" class="btn btn-secondary">Update Template</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Vulnerable: No input validation on client side
+function viewNote(noteId) {
+    fetch(`/notes/${noteId}`)
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('noteContent').innerHTML = data.content;
+            document.getElementById('noteOwner').textContent = data.owner;
+        });
+}
+</script>
+{% endblock %}
